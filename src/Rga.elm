@@ -205,7 +205,7 @@ findHelp key i nodes =
             Nothing
 
 
-insert : Int -> a -> Rga a -> ( Rga a, Op a )
+insert : Int -> a -> Rga a -> ( Rga a, RemoteOp a )
 insert i value rga =
     let
         vec =
@@ -215,7 +215,19 @@ insert i value rga =
             find i rga
     in
     ( rga |> insertHelp left vec value
-    , Insert vec (left |> Maybe.map .id) value
+    , Insert (left |> Maybe.map .id) value
+    )
+        |> toRemoteOp
+
+
+toRemoteOp : ( Rga a, Op a ) -> ( Rga a, RemoteOp a )
+toRemoteOp ( rga, op ) =
+    ( rga
+    , RemoteOp
+        rga.session
+        rga.site
+        rga.clock
+        op
     )
 
 
@@ -250,30 +262,46 @@ insertHelp left vec value rga =
             }
 
 
+type alias RemoteOp a =
+    { session : Int
+    , site : Int
+    , clock : VectorClock
+    , op : Op a
+    }
+
+
 type Op a
-    = Insert SVector (Maybe SVector) a
-    | Update SVector SVector a
-    | Delete SVector SVector
+    = Insert (Maybe SVector) a
+    | Update SVector a
+    | Delete SVector
 
 
-apply : Op a -> Rga a -> Rga a
-apply op rga =
-    case op of
-        Insert vec leftVec value ->
-            rga |> remoteInsert vec leftVec value
+apply : RemoteOp a -> Rga a -> Rga a
+apply remote rga =
+    let
+        vec =
+            SVector
+                remote.session
+                remote.site
+                (remote.clock |> Dict.foldl (always (+)) 0)
+                (remote.clock |> Dict.get remote.site |> Maybe.withDefault 0)
+    in
+    case remote.op of
+        Insert left value ->
+            rga |> remoteInsert vec left value
 
-        Update vec target value ->
+        Update target value ->
             Debug.todo "Update"
 
-        Delete vec target ->
+        Delete target ->
             Debug.todo "Delete"
 
 
 remoteInsert : SVector -> Maybe SVector -> a -> Rga a -> Rga a
-remoteInsert vec leftVec value rga =
+remoteInsert vec left value rga =
     let
         leftNode =
-            leftVec |> Maybe.andThen (svectorKey >> lookup rga.nodes)
+            left |> Maybe.andThen (svectorKey >> lookup rga.nodes)
 
         maybeRightNode =
             leftNode
