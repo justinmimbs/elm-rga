@@ -165,20 +165,15 @@ lookup dict key =
 
 find : Int -> Rga a -> Maybe (Node a)
 find i rga =
-    if i == 0 then
+    if i <= 0 then
         Nothing
 
     else
-        case rga.head of
-            Nothing ->
-                Nothing
-
-            Just key ->
-                findHelp key (i - 1) rga.nodes
+        rga.head |> Maybe.andThen (findHelp rga.nodes (i - 1))
 
 
-findHelp : String -> Int -> Dict String (Node a) -> Maybe (Node a)
-findHelp key i nodes =
+findHelp : Dict String (Node a) -> Int -> String -> Maybe (Node a)
+findHelp nodes i key =
     case nodes |> Dict.get key of
         Just node ->
             if i == 0 && node.value /= Nothing then
@@ -188,36 +183,38 @@ findHelp key i nodes =
                 case node.next of
                     Just nextKey ->
                         findHelp
-                            nextKey
+                            nodes
                             (if node.value == Nothing then
                                 i
 
                              else
                                 i - 1
                             )
-                            nodes
+                            nextKey
 
                     Nothing ->
-                        -- last node
-                        Just node
+                        Nothing
 
         Nothing ->
             Nothing
 
 
-insert : Int -> a -> Rga a -> ( Rga a, RemoteOp a )
+insert : Int -> a -> Rga a -> Maybe ( Rga a, RemoteOp a )
 insert i value rga =
     let
-        vec =
-            nextSVector rga
-
         left =
             find i rga
     in
-    ( rga |> insertHelp left vec value
-    , Insert (left |> Maybe.map .id) value
-    )
-        |> toRemoteOp
+    if i == 0 || left /= Nothing then
+        Just
+            (( rga |> insertHelp left (nextSVector rga) value
+             , Insert (left |> Maybe.map .id) value
+             )
+                |> toRemoteOp
+            )
+
+    else
+        Nothing
 
 
 toRemoteOp : ( Rga a, Op a ) -> ( Rga a, RemoteOp a )
@@ -344,6 +341,9 @@ test =
         list =
             [ 'a', 'b' ]
 
+        o0 =
+            RemoteOp 0 0 Dict.empty (Delete (initSVector 0))
+
         --
         s0 =
             fromList 0 sites list
@@ -354,11 +354,12 @@ test =
         s2 =
             fromList 2 sites list
 
+        --
         ( s1a, o2 ) =
-            s1 |> insert 1 '2'
+            s1 |> insert 1 '2' |> Maybe.withDefault ( s1, o0 )
 
         ( s2a, o3 ) =
-            s2 |> insert 1 '3'
+            s2 |> insert 1 '3' |> Maybe.withDefault ( s2, o0 )
 
         s0a =
             s0 |> apply o3
@@ -371,7 +372,7 @@ test =
             s2a |> apply o2
 
         ( s0b, o1 ) =
-            s0a |> insert 1 '1'
+            s0a |> insert 1 '1' |> Maybe.withDefault ( s0a, o0 )
 
         --
         s1c =
