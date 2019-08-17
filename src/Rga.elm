@@ -149,19 +149,13 @@ causallyReady clock siteOp clockOp =
         True
 
 
-tick : Rga a -> ( VectorClock, SVector )
-tick { session, site, clock } =
-    let
-        clock_ =
-            clock |> Dict.update site (Maybe.map ((+) 1))
-    in
-    ( clock_
-    , SVector
+nextSVector : Rga a -> SVector
+nextSVector { session, site, clock } =
+    SVector
         session
         site
-        (clock_ |> Dict.foldl (always (+)) 0)
-        (clock_ |> Dict.get site |> Maybe.withDefault 0)
-    )
+        (clock |> Dict.foldl (always (+)) 1)
+        (clock |> Dict.get site |> Maybe.withDefault 0 |> (+) 1)
 
 
 lookup : Dict comparable v -> comparable -> Maybe v
@@ -214,36 +208,46 @@ findHelp key i nodes =
 insert : Int -> a -> Rga a -> ( Rga a, Op a )
 insert i value rga =
     let
-        ( clock, vec ) =
-            tick rga
+        vec =
+            nextSVector rga
 
+        left =
+            find i rga
+    in
+    ( rga |> insertHelp left vec value
+    , Insert vec (left |> Maybe.map .id) value
+    )
+
+
+insertHelp : Maybe (Node a) -> SVector -> a -> Rga a -> Rga a
+insertHelp left vec value rga =
+    let
         key =
             svectorKey vec
+
+        clock =
+            rga.clock |> Dict.insert vec.site vec.sequence
     in
-    case find i rga of
+    case left of
         Nothing ->
-            -- insert at head (vec, value, rga -> rga)
-            ( { rga
+            -- insert at head
+            { rga
                 | clock = clock
                 , nodes =
                     rga.nodes
                         |> Dict.insert key (Node (Just value) vec vec rga.head)
                 , head = Just key
-              }
-            , Insert vec Nothing value
-            )
+            }
 
         Just node ->
-            -- insert after (node, vec, value, rga -> rga)
-            ( { rga
+            -- insert after node
+            { rga
                 | clock = clock
                 , nodes =
                     rga.nodes
                         |> Dict.insert (svectorKey node.id) { node | next = Just key }
                         |> Dict.insert key (Node (Just value) vec vec node.next)
-              }
-            , Insert vec (Just node.id) value
-            )
+            }
 
 
 type Op a
@@ -281,33 +285,8 @@ remoteInsert vec leftVec value rga =
             maybeRightNode
                 |> Maybe.map (skipSucceeding rga.nodes vec leftNode)
                 |> Maybe.withDefault leftNode
-
-        key =
-            svectorKey vec
-
-        clock =
-            rga.clock |> Dict.insert vec.site vec.sequence
     in
-    case newLeftNode of
-        Nothing ->
-            -- insert at head
-            { rga
-                | clock = clock
-                , nodes =
-                    rga.nodes
-                        |> Dict.insert key (Node (Just value) vec vec rga.head)
-                , head = Just key
-            }
-
-        Just node ->
-            -- insert after node
-            { rga
-                | clock = clock
-                , nodes =
-                    rga.nodes
-                        |> Dict.insert (svectorKey node.id) { node | next = Just key }
-                        |> Dict.insert key (Node (Just value) vec vec node.next)
-            }
+    rga |> insertHelp newLeftNode vec value
 
 
 skipSucceeding : Dict String (Node a) -> SVector -> Maybe (Node a) -> Node a -> Maybe (Node a)
