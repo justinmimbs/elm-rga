@@ -21,6 +21,7 @@ type alias Rga a =
     { session : Int
     , site : Int
     , clock : VectorClock
+    , waiting : List (RemoteOp a)
     , nodes : Dict String (Node a)
     , head : Maybe String
     }
@@ -51,6 +52,7 @@ init site sites =
     { session = 1
     , site = site
     , clock = sites |> Set.insert site |> Set.foldl (\n -> Dict.insert n 0) Dict.empty
+    , waiting = []
     , nodes = Dict.empty
     , head = Nothing
     }
@@ -91,6 +93,7 @@ fromList site sites list =
     { session = 1
     , site = site
     , clock = sites |> Set.insert site |> Set.foldl (\n -> Dict.insert n 0) Dict.empty
+    , waiting = []
     , nodes = nodesFromList list 0 Dict.empty
     , head =
         if List.isEmpty list then
@@ -143,8 +146,17 @@ svectorPrecedes a b =
         || (a.session == b.session && a.sum == b.sum && a.site < b.site)
 
 
-causallyReady : VectorClock -> Int -> VectorClock -> Bool
-causallyReady clock siteOp clockOp =
+nextSVector : Rga a -> SVector
+nextSVector { session, site, clock } =
+    SVector
+        session
+        site
+        (clock |> Dict.foldl (always (+)) 1)
+        (clock |> Dict.get site |> Maybe.withDefault 0 |> (+) 1)
+
+
+isCausallyReady : VectorClock -> Int -> VectorClock -> Bool
+isCausallyReady clock siteOp clockOp =
     Dict.merge
         (\_ _ _ -> False)
         (\site t tOp ready ->
@@ -162,18 +174,8 @@ causallyReady clock siteOp clockOp =
         True
 
 
-nextSVector : Rga a -> SVector
-nextSVector { session, site, clock } =
-    SVector
-        session
-        site
-        (clock |> Dict.foldl (always (+)) 1)
-        (clock |> Dict.get site |> Maybe.withDefault 0 |> (+) 1)
 
-
-lookup : Dict comparable v -> comparable -> Maybe v
-lookup dict key =
-    Dict.get key dict
+-- find
 
 
 find : Int -> Rga a -> Maybe (Node a)
@@ -300,6 +302,11 @@ skipSucceeding nodes vec left right =
                 Just right
 
 
+lookup : Dict comparable v -> comparable -> Maybe v
+lookup dict key =
+    Dict.get key dict
+
+
 
 -- update
 
@@ -334,7 +341,8 @@ remoteUpdate vec target value rga =
                 rga |> updateHelp vec node value
 
             else
-                rga
+                -- this op is outdated, so we do not apply it, but we still update the clock
+                { rga | clock = rga.clock |> Dict.insert vec.site vec.sequence }
 
         Nothing ->
             rga
@@ -377,7 +385,7 @@ remoteDelete vec target rga =
 
 
 
---
+-- remote op
 
 
 toRemoteOp : ( Rga a, Op a ) -> ( Rga a, RemoteOp a )
@@ -407,6 +415,20 @@ type Op a
 
 apply : RemoteOp a -> Rga a -> Rga a
 apply remote rga =
+    if remoteOpIsReady rga.clock remote then
+        rga |> execute remote |> executeWaiting
+
+    else
+        { rga | waiting = remote :: rga.waiting }
+
+
+remoteOpIsReady : VectorClock -> RemoteOp a -> Bool
+remoteOpIsReady clock remote =
+    isCausallyReady clock remote.site remote.clock
+
+
+execute : RemoteOp a -> Rga a -> Rga a
+execute remote rga =
     let
         vec =
             SVector
@@ -424,6 +446,20 @@ apply remote rga =
 
         Delete target ->
             rga |> remoteDelete vec target
+
+
+executeWaiting : Rga a -> Rga a
+executeWaiting rga =
+    case rga.waiting |> List.partition (remoteOpIsReady rga.clock) of
+        ( [], _ ) ->
+            rga
+
+        ( ready, waiting ) ->
+            let
+                nextRga =
+                    List.foldl execute rga ready
+            in
+            { nextRga | waiting = waiting } |> executeWaiting
 
 
 
@@ -567,8 +603,18 @@ test2 =
 
         c5 =
             c4 |> apply i5
+
+        --
+        result =
+            { a = [ a, a1, a2, a3, a4, a5 ] |> List.map toList
+            , b = [ b, b1, b2, b3, b4, b5 ] |> List.map toList
+            , c = [ c, c1, c2, c3, c4, c5 ] |> List.map toList
+            }
+
+        expected =
+            { a = [ [ 'a' ], [ '1' ], [ '2' ], [], [ '4' ], [ '4', '5' ] ]
+            , b = [ [ 'a' ], [ '2' ], [ '2', '5' ], [ '2', '5' ], [ '5' ], [ '4', '5' ] ]
+            , c = [ [ 'a' ], [], [], [], [ '4' ], [ '4', '5' ] ]
+            }
     in
-    { a = [ a, a1, a2, a3, a4, a5 ] |> List.map toList
-    , b = [ b, b1, b2, b3, b4, b5 ] |> List.map toList
-    , c = [ c, c1, c2, c3, c4, c5 ] |> List.map toList
-    }
+    ( result == expected, result )
