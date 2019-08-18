@@ -2,7 +2,7 @@ module Rga exposing
     ( Rga, init, fromList, toList
     , insert, update, delete
     , RemoteOp, apply
-    , test
+    , test1, test2
     )
 
 {-|
@@ -430,7 +430,7 @@ apply remote rga =
 -------------------------------------------------------------------------------
 
 
-test =
+test1 =
     let
         sites =
             Set.fromList [ 0, 1, 2 ]
@@ -442,56 +442,133 @@ test =
             RemoteOp 0 0 Dict.empty (Delete (initSVector 0))
 
         --
-        s0 =
+        a =
             fromList 0 sites list
 
-        s1 =
+        b =
             fromList 1 sites list
 
-        s2 =
+        c =
             fromList 2 sites list
 
         --
-        ( s1a, o2 ) =
-            s1 |> insert 1 '2' |> Maybe.withDefault ( s1, o0 )
+        ( b1, o2 ) =
+            b |> insert 1 '2' |> Maybe.withDefault ( b, o0 )
 
-        ( s2a, o3 ) =
-            s2 |> insert 1 '3' |> Maybe.withDefault ( s2, o0 )
+        ( c1, o3 ) =
+            c |> insert 1 '3' |> Maybe.withDefault ( c, o0 )
 
-        s0a =
-            s0 |> apply o3
-
-        --
-        s1b =
-            s1a |> apply o3
-
-        s2b =
-            s2a |> apply o2
-
-        ( s0b, o1 ) =
-            s0a |> insert 1 '1' |> Maybe.withDefault ( s0a, o0 )
+        a1 =
+            a |> apply o3
 
         --
-        s1c =
-            s1b |> apply o1
+        b2 =
+            b1 |> apply o3
 
-        s2c =
-            s2b |> apply o1
+        c2 =
+            c1 |> apply o2
 
-        s0c =
-            s0b |> apply o2
+        ( a2, o1 ) =
+            a1 |> insert 1 '1' |> Maybe.withDefault ( a1, o0 )
+
+        --
+        b3 =
+            b2 |> apply o1
+
+        c3 =
+            c2 |> apply o1
+
+        a3 =
+            a2 |> apply o2
 
         --
         result =
-            { s0 = [ s0a, s0b, s0c ] |> List.map toList
-            , s1 = [ s1a, s1b, s1c ] |> List.map toList
-            , s2 = [ s2a, s2b, s2c ] |> List.map toList
+            { a = [ a, a1, a2, a3 ] |> List.map toList
+            , b = [ a, b1, b2, b3 ] |> List.map toList
+            , c = [ a, c1, c2, c3 ] |> List.map toList
             }
 
         expected =
-            { s0 = [ [ 'a', '3', 'b' ], [ 'a', '1', '3', 'b' ], [ 'a', '1', '3', '2', 'b' ] ]
-            , s1 = [ [ 'a', '2', 'b' ], [ 'a', '3', '2', 'b' ], [ 'a', '1', '3', '2', 'b' ] ]
-            , s2 = [ [ 'a', '3', 'b' ], [ 'a', '3', '2', 'b' ], [ 'a', '1', '3', '2', 'b' ] ]
+            { a = [ [ 'a', 'b' ], [ 'a', '3', 'b' ], [ 'a', '1', '3', 'b' ], [ 'a', '1', '3', '2', 'b' ] ]
+            , b = [ [ 'a', 'b' ], [ 'a', '2', 'b' ], [ 'a', '3', '2', 'b' ], [ 'a', '1', '3', '2', 'b' ] ]
+            , c = [ [ 'a', 'b' ], [ 'a', '3', 'b' ], [ 'a', '3', '2', 'b' ], [ 'a', '1', '3', '2', 'b' ] ]
             }
     in
     ( result == expected, result )
+
+
+test2 =
+    let
+        sites =
+            Set.fromList [ 0, 1, 2 ]
+
+        list =
+            [ 'a' ]
+
+        o0 =
+            RemoteOp 0 0 Dict.empty (Delete (initSVector 0))
+
+        --
+        a =
+            fromList 0 sites list
+
+        b =
+            fromList 1 sites list
+
+        c =
+            fromList 2 sites list
+
+        --
+        ( a1, u1 ) =
+            a |> update 1 '1' |> Maybe.withDefault ( a, o0 )
+
+        ( b1, u2 ) =
+            b |> update 1 '2' |> Maybe.withDefault ( b, o0 )
+
+        ( c1, d3 ) =
+            c |> delete 1 |> Maybe.withDefault ( c, o0 )
+
+        --
+        a2 =
+            a1 |> apply u2
+
+        ( b2, i5 ) =
+            b1 |> insert 1 '5' |> Maybe.withDefault ( b1, o0 )
+
+        c2 =
+            c1 |> apply u1
+
+        --
+        a3 =
+            a2 |> apply d3
+
+        b3 =
+            b2 |> apply u1
+
+        ( a4, i4 ) =
+            a3 |> insert 0 '4' |> Maybe.withDefault ( a3, o0 )
+
+        c3 =
+            c2 |> apply i4
+
+        --
+        b4 =
+            b3 |> apply d3
+
+        c4 =
+            c3 |> apply u2
+
+        --
+        a5 =
+            a4 |> apply i5
+
+        b5 =
+            b4 |> apply i4
+
+        c5 =
+            c4 |> apply i5
+    in
+    { a = [ a, a1, a2, a3, a4, a5 ] |> List.map toList
+    , b = [ b, b1, b2, b3, b4, b5 ] |> List.map toList
+    , c = [ c, c1, c2, c3, c4, c5 ] |> List.map toList
+    }
