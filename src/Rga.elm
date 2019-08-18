@@ -1,4 +1,17 @@
-module Rga exposing (Rga, apply, delete, fromList, init, insert, test, toList)
+module Rga exposing
+    ( Rga, init, fromList, toList
+    , insert, update, delete
+    , RemoteOp, apply
+    , test
+    )
+
+{-|
+
+@docs Rga, init, fromList, toList
+@docs insert, update, delete
+@docs RemoteOp, apply
+
+-}
 
 import Dict exposing (Dict)
 import Set exposing (Set)
@@ -288,6 +301,46 @@ skipSucceeding nodes vec left right =
 
 
 
+-- update
+
+
+update : Int -> a -> Rga a -> Maybe ( Rga a, RemoteOp a )
+update i value rga =
+    find i rga
+        |> Maybe.map
+            (\node ->
+                ( rga |> updateHelp (nextSVector rga) node value
+                , Update node.id value
+                )
+                    |> toRemoteOp
+            )
+
+
+updateHelp : SVector -> Node a -> a -> Rga a -> Rga a
+updateHelp vec node value rga =
+    { rga
+        | clock = rga.clock |> Dict.insert vec.site vec.sequence
+        , nodes =
+            rga.nodes
+                |> Dict.insert (svectorKey node.id) { node | value = Just value, precedence = vec }
+    }
+
+
+remoteUpdate : SVector -> SVector -> a -> Rga a -> Rga a
+remoteUpdate vec target value rga =
+    case Dict.get (svectorKey target) rga.nodes of
+        Just node ->
+            if svectorPrecedes node.precedence vec then
+                rga |> updateHelp vec node value
+
+            else
+                rga
+
+        Nothing ->
+            rga
+
+
+
 -- delete
 
 
@@ -295,9 +348,9 @@ delete : Int -> Rga a -> Maybe ( Rga a, RemoteOp a )
 delete i rga =
     find i rga
         |> Maybe.map
-            (\target ->
-                ( rga |> deleteHelp (nextSVector rga) target
-                , Delete target.id
+            (\node ->
+                ( rga |> deleteHelp (nextSVector rga) node
+                , Delete node.id
                 )
                     |> toRemoteOp
             )
@@ -367,7 +420,7 @@ apply remote rga =
             rga |> remoteInsert vec left value
 
         Update target value ->
-            Debug.todo "Update"
+            rga |> remoteUpdate vec target value
 
         Delete target ->
             rga |> remoteDelete vec target
