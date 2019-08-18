@@ -1,4 +1,4 @@
-module Rga exposing (Rga, apply, fromList, init, insert, test, toList)
+module Rga exposing (Rga, apply, delete, fromList, init, insert, test, toList)
 
 import Dict exposing (Dict)
 import Set exposing (Set)
@@ -199,6 +199,10 @@ findHelp nodes i key =
             Nothing
 
 
+
+-- insert
+
+
 insert : Int -> a -> Rga a -> Maybe ( Rga a, RemoteOp a )
 insert i value rga =
     let
@@ -207,7 +211,7 @@ insert i value rga =
     in
     if i == 0 || left /= Nothing then
         Just
-            (( rga |> insertHelp left (nextSVector rga) value
+            (( rga |> insertHelp (nextSVector rga) left value
              , Insert (left |> Maybe.map .id) value
              )
                 |> toRemoteOp
@@ -217,19 +221,8 @@ insert i value rga =
         Nothing
 
 
-toRemoteOp : ( Rga a, Op a ) -> ( Rga a, RemoteOp a )
-toRemoteOp ( rga, op ) =
-    ( rga
-    , RemoteOp
-        rga.session
-        rga.site
-        rga.clock
-        op
-    )
-
-
-insertHelp : Maybe (Node a) -> SVector -> a -> Rga a -> Rga a
-insertHelp left vec value rga =
+insertHelp : SVector -> Maybe (Node a) -> a -> Rga a -> Rga a
+insertHelp vec left value rga =
     let
         key =
             svectorKey vec
@@ -257,6 +250,92 @@ insertHelp left vec value rga =
                         |> Dict.insert (svectorKey node.id) { node | next = Just key }
                         |> Dict.insert key (Node (Just value) vec vec node.next)
             }
+
+
+remoteInsert : SVector -> Maybe SVector -> a -> Rga a -> Rga a
+remoteInsert vec left value rga =
+    let
+        leftNode =
+            left |> Maybe.andThen (svectorKey >> lookup rga.nodes)
+
+        maybeRightNode =
+            leftNode
+                |> Maybe.map .next
+                |> Maybe.withDefault rga.head
+                |> Maybe.andThen (lookup rga.nodes)
+
+        newLeftNode =
+            maybeRightNode
+                |> Maybe.map (skipSucceeding rga.nodes vec leftNode)
+                |> Maybe.withDefault leftNode
+    in
+    rga |> insertHelp vec newLeftNode value
+
+
+skipSucceeding : Dict String (Node a) -> SVector -> Maybe (Node a) -> Node a -> Maybe (Node a)
+skipSucceeding nodes vec left right =
+    -- once we find a right < vec then we have the left we want, otherwise keep advancing
+    if svectorPrecedes right.id vec then
+        left
+
+    else
+        case right.next |> Maybe.andThen (lookup nodes) of
+            Just afterRight ->
+                skipSucceeding nodes vec (Just right) afterRight
+
+            Nothing ->
+                Just right
+
+
+
+-- delete
+
+
+delete : Int -> Rga a -> Maybe ( Rga a, RemoteOp a )
+delete i rga =
+    find i rga
+        |> Maybe.map
+            (\target ->
+                ( rga |> deleteHelp (nextSVector rga) target
+                , Delete target.id
+                )
+                    |> toRemoteOp
+            )
+
+
+deleteHelp : SVector -> Node a -> Rga a -> Rga a
+deleteHelp vec node rga =
+    { rga
+        | clock = rga.clock |> Dict.insert vec.site vec.sequence
+        , nodes =
+            rga.nodes
+                |> Dict.insert (svectorKey node.id) { node | value = Nothing, precedence = vec }
+    }
+
+
+remoteDelete : SVector -> SVector -> Rga a -> Rga a
+remoteDelete vec target rga =
+    case Dict.get (svectorKey target) rga.nodes of
+        Just node ->
+            rga |> deleteHelp vec node
+
+        Nothing ->
+            rga
+
+
+
+--
+
+
+toRemoteOp : ( Rga a, Op a ) -> ( Rga a, RemoteOp a )
+toRemoteOp ( rga, op ) =
+    ( rga
+    , RemoteOp
+        rga.session
+        rga.site
+        rga.clock
+        op
+    )
 
 
 type alias RemoteOp a =
@@ -291,42 +370,7 @@ apply remote rga =
             Debug.todo "Update"
 
         Delete target ->
-            Debug.todo "Delete"
-
-
-remoteInsert : SVector -> Maybe SVector -> a -> Rga a -> Rga a
-remoteInsert vec left value rga =
-    let
-        leftNode =
-            left |> Maybe.andThen (svectorKey >> lookup rga.nodes)
-
-        maybeRightNode =
-            leftNode
-                |> Maybe.map .next
-                |> Maybe.withDefault rga.head
-                |> Maybe.andThen (lookup rga.nodes)
-
-        newLeftNode =
-            maybeRightNode
-                |> Maybe.map (skipSucceeding rga.nodes vec leftNode)
-                |> Maybe.withDefault leftNode
-    in
-    rga |> insertHelp newLeftNode vec value
-
-
-skipSucceeding : Dict String (Node a) -> SVector -> Maybe (Node a) -> Node a -> Maybe (Node a)
-skipSucceeding nodes vec left right =
-    -- once we find a right < vec then we have the left we want, otherwise keep advancing
-    if svectorPrecedes right.id vec then
-        left
-
-    else
-        case right.next |> Maybe.andThen (lookup nodes) of
-            Just afterRight ->
-                skipSucceeding nodes vec (Just right) afterRight
-
-            Nothing ->
-                Just right
+            rga |> remoteDelete vec target
 
 
 
