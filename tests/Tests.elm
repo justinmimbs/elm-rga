@@ -95,40 +95,40 @@ runActions initial siteActions =
 
 
 iterateActions : Dict String (RemoteOp a) -> Dict Int ( List (Rga a), Rga a, List (Action a) ) -> Dict Int (List (List a))
-iterateActions ops results =
+iterateActions ops1 results1 =
     let
-        ( count, nextOps, nextResults ) =
+        ( done, ops, results ) =
             -- for each site
             Dict.foldl
-                (\site ( history, rga, actions ) ( c, o, r ) ->
+                (\site ( history, rga, actions ) ( d, o, r ) ->
                     -- attempt the next action
                     case actions of
                         [] ->
-                            ( c, o, r )
+                            ( d, o, r )
 
                         action :: rest ->
                             case action of
                                 Perform key op ->
                                     case rga |> applyOp op of
                                         Nothing ->
-                                            ( c, o, r )
+                                            ( d, o, r )
 
                                         Just ( nextRga, remoteOp ) ->
-                                            ( c + 1, o |> Dict.insert key remoteOp, r |> Dict.insert site ( rga :: history, nextRga, rest ) )
+                                            ( False, o |> Dict.insert key remoteOp, r |> Dict.insert site ( rga :: history, nextRga, rest ) )
 
                                 Receive key ->
                                     case o |> Dict.get key of
                                         Nothing ->
-                                            ( c, o, r )
+                                            ( d, o, r )
 
                                         Just remoteOp ->
-                                            ( c + 1, o, r |> Dict.insert site ( rga :: history, rga |> Rga.apply remoteOp, rest ) )
+                                            ( False, o, r |> Dict.insert site ( rga :: history, rga |> Rga.apply remoteOp, rest ) )
                 )
-                ( 0, ops, results )
-                results
+                ( True, ops1, results1 )
+                results1
     in
-    if count == 0 then
-        nextResults |> Dict.map (\_ ( history, rga, _ ) -> rga :: history |> List.reverse |> List.map Rga.toList)
+    if done then
+        results |> Dict.map (\_ ( history, rga, _ ) -> rga :: history |> List.reverse |> List.map Rga.toList)
 
     else
-        iterateActions nextOps nextResults
+        iterateActions ops results
