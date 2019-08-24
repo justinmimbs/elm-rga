@@ -6,6 +6,8 @@ import Html.Attributes
 import Html.Events
 import Json.Decode as Decode exposing (Decoder)
 import Json.Encode as Encode exposing (Value)
+import Rga exposing (Rga)
+import Set
 
 
 main : Program () Model Msg
@@ -20,14 +22,18 @@ main =
 
 init : String -> Model
 init string =
-    Model Insert 0 (String.length string) (string |> String.toList)
+    Model
+        Insert
+        0
+        (String.length string)
+        (string |> String.toList |> Rga.fromList 0 Set.empty)
 
 
 type alias Model =
     { mode : Mode
     , cursor : Int
     , length : Int
-    , array : List Char
+    , array : Rga Char
     }
 
 
@@ -37,6 +43,8 @@ type alias Model =
 
 type Msg
     = PressedArrow Direction
+    | PressedDelete Direction
+    | EnteredChar Char
     | SelectedMode Mode
 
 
@@ -64,6 +72,54 @@ update msg model =
                             model.cursor + 1 |> min model.length
             in
             { model | cursor = cursor }
+
+        PressedDelete direction ->
+            let
+                indexAndCursor =
+                    if direction == Left && 0 < model.cursor then
+                        Just ( model.cursor, model.cursor - 1 )
+
+                    else if direction == Right && model.cursor < model.length then
+                        Just ( model.cursor + 1, model.cursor )
+
+                    else
+                        Nothing
+            in
+            case indexAndCursor of
+                Just ( index, cursor ) ->
+                    case model.array |> Rga.delete index of
+                        Just ( array, _ ) ->
+                            { model
+                                | cursor = cursor
+                                , length = model.length - 1
+                                , array = array
+                            }
+
+                        Nothing ->
+                            model
+
+                Nothing ->
+                    model
+
+        EnteredChar char ->
+            let
+                ( f, index, length ) =
+                    if model.mode == Insert || model.cursor == model.length then
+                        ( Rga.insert, model.cursor, model.length + 1 )
+
+                    else
+                        ( Rga.update, model.cursor + 1, model.length )
+            in
+            case model.array |> f index char of
+                Just ( array, _ ) ->
+                    { model
+                        | cursor = model.cursor + 1
+                        , length = length
+                        , array = array
+                    }
+
+                Nothing ->
+                    model
 
         SelectedMode mode ->
             { model | mode = mode }
@@ -101,8 +157,19 @@ decodeMsgFromKey key =
         "ArrowRight" ->
             Decode.succeed (PressedArrow Right)
 
+        "Backspace" ->
+            Decode.succeed (PressedDelete Left)
+
+        "Delete" ->
+            Decode.succeed (PressedDelete Right)
+
         _ ->
-            Decode.fail "no-op"
+            case String.uncons key of
+                Just ( char, "" ) ->
+                    Decode.succeed (EnteredChar char)
+
+                _ ->
+                    Decode.fail "no-op"
 
 
 
@@ -111,6 +178,10 @@ decodeMsgFromKey key =
 
 view : Model -> Browser.Document Msg
 view { mode, cursor, length, array } =
+    let
+        string =
+            array |> Rga.toList |> String.fromList |> String.replace " " "\u{00A0}"
+    in
     Browser.Document
         "test"
         [ Html.node "link" [ Html.Attributes.rel "stylesheet", Html.Attributes.href "../app/css/style.css" ] []
@@ -125,9 +196,9 @@ view { mode, cursor, length, array } =
                 [ Html.div
                     [ Html.Attributes.class "textline"
                     ]
-                    [ Html.text (String.fromList array |> String.left cursor)
+                    [ Html.text (string |> String.left cursor)
                     , Html.span [ Html.Attributes.class ("cursor" ++ (mode == Insert |> bool " insert" "")) ] []
-                    , Html.text (String.fromList array |> String.dropLeft cursor)
+                    , Html.text (string |> String.dropLeft cursor)
                     ]
                 ]
             , Html.div
