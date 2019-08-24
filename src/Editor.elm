@@ -1,6 +1,5 @@
-module Main exposing (main)
+module Editor exposing (Editor, Msg, init, update, view)
 
-import Browser
 import Html exposing (Html)
 import Html.Attributes
 import Html.Events
@@ -10,30 +9,20 @@ import Rga exposing (Rga)
 import Set
 
 
-main : Program () Model Msg
-main =
-    Browser.document
-        { init = \_ -> ( init "hello, world", Cmd.none )
-        , update = \msg model -> ( update msg model, Cmd.none )
-        , view = view
-        , subscriptions = always Sub.none
-        }
-
-
-init : String -> Model
-init string =
-    Model
-        Insert
-        0
-        (String.length string)
-        (string |> String.toList |> Rga.fromList 0 Set.empty)
-
-
-type alias Model =
+type alias Editor =
     { mode : Mode
     , cursor : Int
     , length : Int
     , array : Rga Char
+    }
+
+
+init : String -> Editor
+init string =
+    { mode = Insert
+    , cursor = 0
+    , length = String.length string
+    , array = string |> String.toList |> Rga.fromList 0 Set.empty
     }
 
 
@@ -58,7 +47,7 @@ type Mode
     | Replace
 
 
-update : Msg -> Model -> Model
+update : Msg -> Editor -> Editor
 update msg model =
     case msg of
         PressedArrow direction ->
@@ -176,37 +165,33 @@ decodeMsgFromKey key =
 -- view
 
 
-view : Model -> Browser.Document Msg
+view : Editor -> Html Msg
 view { mode, cursor, length, array } =
     let
         string =
             array |> Rga.toList |> String.fromList |> String.replace " " "\u{00A0}"
     in
-    Browser.Document
-        "test"
-        [ Html.node "link" [ Html.Attributes.rel "stylesheet", Html.Attributes.href "../app/css/style.css" ] []
-        , Html.div
-            [ Html.Attributes.class "editor"
-            , Html.Attributes.tabindex 0
-            , Html.Events.on "keydown" decodeKeydown
+    Html.div
+        [ Html.Attributes.class "editor"
+        , Html.Attributes.tabindex 0
+        , Html.Events.on "keydown" decodeKeydown
+        ]
+        [ Html.div
+            [ Html.Attributes.class "textarea"
             ]
             [ Html.div
-                [ Html.Attributes.class "textarea"
+                [ Html.Attributes.class "textline"
                 ]
-                [ Html.div
-                    [ Html.Attributes.class "textline"
-                    ]
-                    [ Html.text (string |> String.left cursor)
-                    , Html.span [ Html.Attributes.class ("cursor" ++ (mode == Insert |> bool " insert" "")) ] []
-                    , Html.text (string |> String.dropLeft cursor)
-                    ]
+                [ Html.text (string |> String.left cursor)
+                , Html.span [ Html.Attributes.class ("cursor" ++ (mode == Insert |> bool " insert" "")) ] []
+                , Html.text (string |> String.dropLeft cursor)
                 ]
-            , Html.div
-                [ Html.Attributes.class "controls"
-                ]
-                [ viewSelect modeToString modeFromString mode [ Insert, Replace ]
-                    |> Html.map SelectedMode
-                ]
+            ]
+        , Html.div
+            [ Html.Attributes.class "controls"
+            ]
+            [ viewSelect modeToString modeFromString mode [ Insert, Replace ]
+                |> Html.map SelectedMode
             ]
         ]
 

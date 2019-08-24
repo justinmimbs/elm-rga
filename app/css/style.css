@@ -38,11 +38,14 @@ body {
 }
 .editor {
     width: 400px;
+    height: 10rem;
+    display: grid;
+    grid-template-rows: auto 2rem;
     pointer-events: none;
 }
 .editor .textarea {
     width: 100%;
-    min-height: 2rem;
+    height: 100%;
     overflow-y: auto;
     padding: 0.5rem;
     box-sizing: border-box;
@@ -91,7 +94,7 @@ ul.select li {
     height: 1rem;
     padding: 0 0.5rem;
     box-sizing: border-box;
-    line-height: calc(1rem - 2px);
+    line-height: 1rem;
 }
 ul.select li.selected.selected {
     background: var(--selected);
@@ -107,6 +110,7 @@ ul.select {
 ul.select li {
     border-top: 1px solid lightgray;
     border-bottom: 1px solid lightgray;
+    line-height: calc(1rem - 2px);
     text-align: center;
 }
 ul.select li:first-child {
