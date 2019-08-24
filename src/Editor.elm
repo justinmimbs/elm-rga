@@ -35,6 +35,7 @@ type Msg
     | PressedDelete Direction
     | EnteredChar Char
     | SelectedMode Mode
+    | ToggledMode
 
 
 type Direction
@@ -113,6 +114,9 @@ update msg model =
         SelectedMode mode ->
             { model | mode = mode }
 
+        ToggledMode ->
+            { model | mode = model.mode == Insert |> bool Replace Insert }
+
 
 
 -- events
@@ -151,6 +155,9 @@ decodeMsgFromKey key =
 
         "Delete" ->
             Decode.succeed (PressedDelete Right)
+
+        "Insert" ->
+            Decode.succeed ToggledMode
 
         _ ->
             case String.uncons key of
