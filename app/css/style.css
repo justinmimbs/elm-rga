@@ -55,15 +55,15 @@ body {
     font-size: 16px;
     pointer-events: auto;
 }
-.cursor {
+.editor .cursor {
     position: relative;
 }
-.cursor::after {
+.editor .cursor::after {
     position: absolute;
     content: '\00A0';
     z-index: -1;
 }
-.cursor.insert::after {
+.editor .cursor.insert::after {
     width: 2px;
     left: -1px;
 }
@@ -71,6 +71,14 @@ body {
     background: lightgray;
 }
 .editor:focus .cursor.insert::after {
+    background: gray;
+}
+/* temp: always display cursor */
+.editor .cursor::after {
+    background: lightgray;
+}
+/* temp: always display cursor */
+.editor .cursor.insert::after {
     background: gray;
 }
 

@@ -1,12 +1,12 @@
-module Editor exposing (Editor, Msg, init, update, view)
+module Editor exposing (Editor, Msg, apply, init, update, view)
 
 import Html exposing (Html)
 import Html.Attributes
 import Html.Events
 import Json.Decode as Decode exposing (Decoder)
 import Json.Encode as Encode exposing (Value)
-import Rga exposing (Rga)
-import Set
+import Rga exposing (RemoteOp, Rga)
+import Set exposing (Set)
 
 
 type alias Editor =
@@ -17,12 +17,12 @@ type alias Editor =
     }
 
 
-init : String -> Editor
-init string =
+init : Int -> Set Int -> String -> Editor
+init site sites string =
     { mode = Insert
     , cursor = 0
     , length = String.length string
-    , array = string |> String.toList |> Rga.fromList 0 Set.empty
+    , array = string |> String.toList |> Rga.fromList site sites
     }
 
 
@@ -48,7 +48,11 @@ type Mode
     | Replace
 
 
-update : Msg -> Editor -> Editor
+type alias Op =
+    RemoteOp Char
+
+
+update : Msg -> Editor -> ( Editor, Maybe Op )
 update msg model =
     case msg of
         PressedArrow direction ->
@@ -62,6 +66,7 @@ update msg model =
                             model.cursor + 1 |> min model.length
             in
             { model | cursor = cursor }
+                |> noOp
 
         PressedDelete direction ->
             let
@@ -78,18 +83,19 @@ update msg model =
             case indexAndCursor of
                 Just ( index, cursor ) ->
                     case model.array |> Rga.delete index of
-                        Just ( array, _ ) ->
+                        Just ( array, op ) ->
                             { model
                                 | cursor = cursor
                                 , length = model.length - 1
                                 , array = array
                             }
+                                |> withOp op
 
                         Nothing ->
-                            model
+                            model |> noOp
 
                 Nothing ->
-                    model
+                    model |> noOp
 
         EnteredChar char ->
             let
@@ -101,21 +107,50 @@ update msg model =
                         ( Rga.update, model.cursor + 1, model.length )
             in
             case model.array |> f index char of
-                Just ( array, _ ) ->
+                Just ( array, op ) ->
                     { model
                         | cursor = model.cursor + 1
                         , length = length
                         , array = array
                     }
+                        |> withOp op
 
                 Nothing ->
-                    model
+                    model |> noOp
 
         SelectedMode mode ->
             { model | mode = mode }
+                |> noOp
 
         ToggledMode ->
             { model | mode = model.mode == Insert |> bool Replace Insert }
+                |> noOp
+
+
+noOp : a -> ( a, Maybe Op )
+noOp x =
+    ( x, Nothing )
+
+
+withOp : Op -> a -> ( a, Maybe Op )
+withOp op x =
+    ( x, Just op )
+
+
+apply : Op -> Editor -> Editor
+apply op editor =
+    let
+        array =
+            editor.array |> Rga.apply op
+
+        length =
+            array |> Rga.toList |> List.length
+    in
+    { mode = editor.mode
+    , cursor = editor.cursor |> clamp 0 length
+    , length = length
+    , array = array
+    }
 
 
 
