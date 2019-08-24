@@ -5,6 +5,7 @@ import Html exposing (Html)
 import Html.Attributes
 import Html.Events
 import Json.Decode as Decode exposing (Decoder)
+import Json.Encode as Encode exposing (Value)
 
 
 main : Program () Model Msg
@@ -19,11 +20,12 @@ main =
 
 init : String -> Model
 init string =
-    Model 0 (String.length string) (string |> String.toList)
+    Model Insert 0 (String.length string) (string |> String.toList)
 
 
 type alias Model =
-    { cursor : Int
+    { mode : Mode
+    , cursor : Int
     , length : Int
     , array : List Char
     }
@@ -35,11 +37,17 @@ type alias Model =
 
 type Msg
     = PressedArrow Direction
+    | SelectedMode Mode
 
 
 type Direction
     = Left
     | Right
+
+
+type Mode
+    = Insert
+    | Replace
 
 
 update : Msg -> Model -> Model
@@ -56,6 +64,9 @@ update msg model =
                             model.cursor + 1 |> min model.length
             in
             { model | cursor = cursor }
+
+        SelectedMode mode ->
+            { model | mode = mode }
 
 
 
@@ -99,24 +110,107 @@ decodeMsgFromKey key =
 
 
 view : Model -> Browser.Document Msg
-view { cursor, length, array } =
+view { mode, cursor, length, array } =
     Browser.Document
         "test"
         [ Html.node "link" [ Html.Attributes.rel "stylesheet", Html.Attributes.href "../app/css/style.css" ] []
         , Html.div
-            [ Html.Attributes.class "textarea"
+            [ Html.Attributes.class "editor"
             , Html.Attributes.tabindex 0
             , Html.Events.on "keydown" decodeKeydown
             ]
             [ Html.div
-                [ Html.Attributes.class "textline"
+                [ Html.Attributes.class "textarea"
                 ]
-                [ Html.text (String.fromList array |> String.left cursor)
-                , Html.span [ Html.Attributes.class "cursor insert" ] []
-                , Html.text (String.fromList array |> String.dropLeft cursor)
+                [ Html.div
+                    [ Html.Attributes.class "textline"
+                    ]
+                    [ Html.text (String.fromList array |> String.left cursor)
+                    , Html.span [ Html.Attributes.class ("cursor" ++ (mode == Insert |> bool " insert" "")) ] []
+                    , Html.text (String.fromList array |> String.dropLeft cursor)
+                    ]
+                ]
+            , Html.div
+                [ Html.Attributes.class "controls"
+                ]
+                [ viewSelect modeToString modeFromString mode [ Insert, Replace ]
+                    |> Html.map SelectedMode
                 ]
             ]
         ]
+
+
+modeToString : Mode -> String
+modeToString mode =
+    case mode of
+        Insert ->
+            "Insert"
+
+        Replace ->
+            "Replace"
+
+
+modeFromString : String -> Maybe Mode
+modeFromString string =
+    case string of
+        "Insert" ->
+            Just Insert
+
+        "Replace" ->
+            Just Replace
+
+        _ ->
+            Nothing
+
+
+
+-- view select
+
+
+viewSelect : (a -> String) -> (String -> Maybe a) -> a -> List a -> Html a
+viewSelect toString fromString selected items =
+    Html.ul
+        [ Html.Attributes.class "select"
+        , Html.Events.on "click" (decodeSelectedItem fromString)
+        ]
+        (List.map (viewSelectItem toString selected) items)
+
+
+viewSelectItem : (a -> String) -> a -> a -> Html b
+viewSelectItem toString selected item =
+    let
+        label =
+            item |> toString
+
+        ( class, key ) =
+            if item == selected then
+                ( "selected", Encode.null )
+
+            else
+                ( "", Encode.string label )
+    in
+    Html.li
+        [ Html.Attributes.class class
+        , Html.Attributes.property "data-key" key
+        ]
+        [ Html.text label
+        ]
+
+
+decodeSelectedItem : (String -> Maybe a) -> Decoder a
+decodeSelectedItem fromString =
+    Decode.at [ "target", "data-key" ] Decode.string
+        |> Decode.andThen (fromString >> maybeToDecoder)
+
+
+maybeToDecoder : Maybe a -> Decoder a
+maybeToDecoder m =
+    case m of
+        Just x ->
+            Decode.succeed x
+
+        Nothing ->
+            Decode.fail "no-op"
 
 
 
