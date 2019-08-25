@@ -144,10 +144,14 @@ apply op editor =
             editor.array |> Rga.apply op
 
         length =
-            array |> Rga.toList |> List.length
+            array |> Rga.length
+
+        cursor =
+            Rga.translateIndex editor.cursor editor.array array
+                |> Maybe.withDefault (editor.cursor |> min length)
     in
     { mode = editor.mode
-    , cursor = editor.cursor |> clamp 0 length
+    , cursor = cursor
     , length = length
     , array = array
     }
@@ -211,7 +215,7 @@ view : Editor -> Html Msg
 view { mode, cursor, length, array } =
     let
         string =
-            array |> Rga.toList |> String.fromList |> String.replace " " "\u{00A0}"
+            array |> Rga.foldl String.cons "" |> String.reverse |> String.replace " " "\u{00A0}"
     in
     Html.div
         [ Html.Attributes.class "editor"
