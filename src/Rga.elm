@@ -1,14 +1,16 @@
 module Rga exposing
-    ( Rga, init, fromList, toList
+    ( Rga, init, fromList, toList, foldl, length
     , insert, update, delete
     , RemoteOp, apply
+    , translateIndex
     )
 
 {-|
 
-@docs Rga, init, fromList, toList
+@docs Rga, init, fromList, toList, foldl, length
 @docs insert, update, delete
 @docs RemoteOp, apply
+@docs translateIndex
 
 -}
 
@@ -60,6 +62,11 @@ init site sites =
 toList : Rga a -> List a
 toList { nodes, head } =
     foldlHelp nodes head (::) [] |> List.reverse
+
+
+length : Rga a -> Int
+length { nodes, head } =
+    foldlHelp nodes head (\_ n -> n + 1) 0
 
 
 foldl : (a -> b -> b) -> b -> Rga a -> b
@@ -211,6 +218,47 @@ findHelp nodes i key =
 
         Nothing ->
             Nothing
+
+
+indexOf : Node a -> Rga a -> Maybe Int
+indexOf node rga =
+    rga.head |> Maybe.andThen (indexOfHelp rga.nodes 0 (svectorKey node.id))
+
+
+indexOfHelp : Dict String (Node a) -> Int -> String -> String -> Maybe Int
+indexOfHelp nodes i targetKey key =
+    case nodes |> Dict.get key of
+        Just node ->
+            let
+                j =
+                    if node.value == Nothing then
+                        i
+
+                    else
+                        i + 1
+            in
+            if key == targetKey then
+                Just j
+
+            else
+                case node.next of
+                    Just nextKey ->
+                        indexOfHelp nodes j targetKey nextKey
+
+                    Nothing ->
+                        Nothing
+
+        Nothing ->
+            Nothing
+
+
+translateIndex : Int -> Rga a -> Rga a -> Maybe Int
+translateIndex i source target =
+    if i <= 0 then
+        Just 0
+
+    else
+        find i source |> Maybe.andThen (\node -> indexOf node target)
 
 
 
