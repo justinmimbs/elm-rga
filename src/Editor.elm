@@ -195,6 +195,9 @@ decodeMsgFromKey key =
         "Delete" ->
             Decode.succeed (PressedDelete Right)
 
+        "Enter" ->
+            Decode.succeed (EnteredChar '\n')
+
         "Insert" ->
             Decode.succeed ToggledMode
 
@@ -212,10 +215,10 @@ decodeMsgFromKey key =
 
 
 view : Editor -> Html Msg
-view { mode, cursor, length, array } =
+view { mode, cursor, array } =
     let
-        string =
-            array |> Rga.foldl String.cons "" |> String.reverse |> String.replace " " "\u{00A0}"
+        lines =
+            array |> Rga.foldl String.cons "" |> String.reverse |> String.replace " " "\u{00A0}" |> String.lines
     in
     Html.div
         [ Html.Attributes.class "editor"
@@ -225,14 +228,7 @@ view { mode, cursor, length, array } =
         [ Html.div
             [ Html.Attributes.class "textarea"
             ]
-            [ Html.div
-                [ Html.Attributes.class "textline"
-                ]
-                [ Html.text (string |> String.left cursor)
-                , Html.span [ Html.Attributes.class ("cursor" ++ (mode == Insert |> bool " insert" "")) ] []
-                , Html.text (string |> String.dropLeft cursor)
-                ]
-            ]
+            (viewLines mode cursor lines [])
         , Html.div
             [ Html.Attributes.class "controls"
             ]
@@ -240,6 +236,34 @@ view { mode, cursor, length, array } =
                 |> Html.map SelectedMode
             ]
         ]
+
+
+viewLines : Mode -> Int -> List String -> List (Html a) -> List (Html a)
+viewLines mode cursor lines nodes =
+    case lines of
+        [] ->
+            List.reverse nodes
+
+        line :: rest ->
+            let
+                length =
+                    String.length line
+            in
+            Html.div
+                [ Html.Attributes.class "line"
+                ]
+                (if 0 <= cursor && cursor <= length then
+                    [ Html.text (line |> String.left cursor)
+                    , Html.span [ Html.Attributes.class ("cursor" ++ (mode == Insert |> bool " insert" "")) ] []
+                    , Html.text (line |> String.dropLeft cursor)
+                    ]
+
+                 else
+                    [ Html.text line
+                    ]
+                )
+                :: nodes
+                |> viewLines mode (cursor - (length + 1)) rest
 
 
 modeToString : Mode -> String

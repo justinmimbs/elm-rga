@@ -55,6 +55,13 @@ body {
     font-size: 16px;
     pointer-events: auto;
 }
+.editor .textarea .line {
+    height: 1rem;
+    line-height: 1rem;
+    width: min-content;
+    padding-right: 0.5rem;
+    white-space: nowrap;
+}
 .editor .cursor {
     position: relative;
 }
