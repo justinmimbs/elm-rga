@@ -32,7 +32,7 @@ init site sites string =
 
 type Msg
     = PressedArrow Direction
-    | PressedDelete Direction
+    | PressedDelete Delete
     | EnteredChar Char
     | SelectedMode Mode
     | ToggledMode
@@ -41,6 +41,13 @@ type Msg
 type Direction
     = Left
     | Right
+    | Up
+    | Down
+
+
+type Delete
+    = Backward
+    | Forward
 
 
 type Mode
@@ -64,17 +71,23 @@ update msg model =
 
                         Right ->
                             model.cursor + 1 |> min model.length
+
+                        Up ->
+                            model.cursor |> moveCursorUp (linebreakIndexes model.array)
+
+                        Down ->
+                            model.cursor |> moveCursorDown (linebreakIndexes model.array) model.length
             in
             { model | cursor = cursor }
                 |> noOp
 
-        PressedDelete direction ->
+        PressedDelete delete ->
             let
                 indexAndCursor =
-                    if direction == Left && 0 < model.cursor then
+                    if delete == Backward && 0 < model.cursor then
                         Just ( model.cursor, model.cursor - 1 )
 
-                    else if direction == Right && model.cursor < model.length then
+                    else if delete == Forward && model.cursor < model.length then
                         Just ( model.cursor + 1, model.cursor )
 
                     else
@@ -157,6 +170,81 @@ apply op editor =
     }
 
 
+linebreakIndexes : Rga Char -> List Int
+linebreakIndexes =
+    Rga.foldl
+        (\char ( i, list ) ->
+            ( i + 1
+            , if char == '\n' then
+                i :: list
+
+              else
+                list
+            )
+        )
+        ( 1, [] )
+        >> Tuple.second
+        >> List.reverse
+
+
+moveCursorUp : List Int -> Int -> Int
+moveCursorUp indexes cursor =
+    case indexes of
+        [] ->
+            0
+
+        next :: rest ->
+            cursor |> moveCursorUpHelp Nothing 0 next rest
+
+
+moveCursorUpHelp : Maybe Int -> Int -> Int -> List Int -> Int -> Int
+moveCursorUpHelp maybePrevious current next indexes cursor =
+    if cursor < next then
+        case maybePrevious of
+            Nothing ->
+                current
+
+            Just previous ->
+                min (previous + (cursor - current)) (current - 1)
+
+    else
+        case indexes of
+            [] ->
+                min (current + (cursor - next)) (next - 1)
+
+            nextNext :: rest ->
+                cursor |> moveCursorUpHelp (Just current) next nextNext rest
+
+
+moveCursorDown : List Int -> Int -> Int -> Int
+moveCursorDown indexes length cursor =
+    case indexes of
+        [] ->
+            length
+
+        next :: rest ->
+            cursor |> moveCursorDownHelp 0 next rest length
+
+
+moveCursorDownHelp : Int -> Int -> List Int -> Int -> Int -> Int
+moveCursorDownHelp current next indexes length cursor =
+    if cursor < next then
+        case indexes of
+            [] ->
+                min (next + (cursor - current)) length
+
+            nextNext :: _ ->
+                min (next + (cursor - current)) (nextNext - 1)
+
+    else
+        case indexes of
+            [] ->
+                length
+
+            nextNext :: rest ->
+                cursor |> moveCursorDownHelp next nextNext rest length
+
+
 
 -- events
 
@@ -189,11 +277,17 @@ decodeMsgFromKey key =
         "ArrowRight" ->
             Decode.succeed (PressedArrow Right)
 
+        "ArrowUp" ->
+            Decode.succeed (PressedArrow Up)
+
+        "ArrowDown" ->
+            Decode.succeed (PressedArrow Down)
+
         "Backspace" ->
-            Decode.succeed (PressedDelete Left)
+            Decode.succeed (PressedDelete Backward)
 
         "Delete" ->
-            Decode.succeed (PressedDelete Right)
+            Decode.succeed (PressedDelete Forward)
 
         "Enter" ->
             Decode.succeed (EnteredChar '\n')
