@@ -73,7 +73,7 @@ view : Model -> Browser.Document Msg
 view { editor1, editor2 } =
     Browser.Document
         "test"
-        [ Html.node "link" [ Html.Attributes.rel "stylesheet", Html.Attributes.href "../app/css/style.css" ] []
+        [ Html.node "link" [ Html.Attributes.rel "stylesheet", Html.Attributes.href "../css/style.css" ] []
         , Editor.view editor1 |> Html.map Editor1
         , Editor.view editor2 |> Html.map Editor2
         ]
